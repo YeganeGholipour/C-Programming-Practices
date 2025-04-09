@@ -1,6 +1,9 @@
 #include <stdio.h>
 
 int partitioning(int *v, int left, int right);
+void swap(int *v, int i, int j);
+int partitioning(int *v, int low, int high);
+
 
 void swap(int *v, int i, int j) {
     int temp = v[i];
