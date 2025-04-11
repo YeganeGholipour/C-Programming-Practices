@@ -5,98 +5,152 @@
 
 #define MAXLINES 5000
 #define MAXLEN 1000
+#define MAXTOKEN 1000
 
-int cmp_str(void **a, void **b);
-int cmp_num(void **a, void **b);
-int strcasecmp(const char *s1, const char *s2);
-void extract_string(char *s, char *string);
-void get_field(void *base[], char *splitted_lines[], int col_num, int nlines);
-void quicksort(void *base[], int low, int high, int (*compar)(void **, void **));
-int partition(void **base, int low, int high, int (*compar)(void **, void **));
+void parse_flags(int argc, char **argv, int *int_flag, int *reverse_flag, int *fold_flag, int *dir_flag, int *fields, int *field_count);
+int cmp_str(void **a, void **b, int int_flag, int reverse_flag, int fold_flag, int dir_flag);
+int cmp_num(void **a, void **b, int int_flag, int reverse_flag, int fold_flag, int dir_flag);
+void quicksort(void *base[], void *buffer[], int low, int high, int (*compar)(void **, void **, int, int, int, int), int int_flag, int reverse_flag, int fold_flag, int dir_flag);
+int partition(void **base, void **buffer, int low, int high, int (*compar)(void **, void **, int, int, int, int), int int_flag, int reverse_flag, int fold_flag, int dir_flag);
 void swap(void **a, void **b);
 int readline(char **base, int max_lines);
 int my_getline(char *line, int max_len);
 void writeline(void **base, int len);
 char *alloc(int len);
 void afree(void **base, int len);
+void get_substring(void **lineptr, void **buffer, int index, int nlines);
+void extract_string(char *s, char *string);
 
-char *lineptr[MAXLINES];
-int int_flag;
-int reverse_flag;
-int fold_flag;
-int dir_flag;
-int field;
+int is_global_specified = 0;
+int global_int_flag = 0;
+int global_reverse_flag = 0;
+int global_fold_flag = 0;
+int global_dir_flag = 0;
 
 int main(int argc, char *argv[]) {
+    int int_flag[MAXLINES] = {0};
+    int reverse_flag[MAXLINES] = {0};
+    int fold_flag[MAXLINES] = {0};
+    int dir_flag[MAXLINES] = {0};
+    int fields[MAXLINES];
+    int field_count = 0;
     int nlines;
-    char *splited_lines[MAXLINES];
+    char *lineptr[MAXLINES];
+    char *buffer[MAXLINES];
+
     if ((nlines = readline(lineptr, MAXLINES)) > 0) {
-        for (int i = 1; i < argc; i++) {
-            int_flag = 0;
-            reverse_flag = 0;
-            fold_flag = 0;
-            dir_flag = 0;
-            field = 0;
-            for (int j = 1; j < strlen(argv[i]); j++) {
-                char element = argv[i][j];
-    
-                switch (element)
-                {
-                case 'n':
-                    int_flag = 1;
-                    printf("Numeric sort enabled (-n)\n");
-                    fflush(stdout);
-                    break;
-    
-                case 'r':
-                    reverse_flag = 1;
-                    printf("Reverse order enabled (-r)\n");
-                    fflush(stdout);
-                    break;
-                
-                case 'f':
-                    fold_flag = 1;
-                    printf("fold order enabled (-f)\n");
-                    fflush(stdout);
-                    break;
-                
-                case 'd':
-                    dir_flag = 1;
-                    printf("directory order enabled (-d)\n");
-                    fflush(stdout);
-                    break;
-                
-                default:
-                    if (isdigit(element)) {
-                        field = element - '0'; 
-                    }
-                    break;
-                }
+        parse_flags(argc, argv, int_flag, reverse_flag, fold_flag, dir_flag, fields, &field_count);
+
+        if (is_global_specified) {
+            printf("Sorting Globally, global_int_flag: %d, global_reverse_flag: %d, global_fold_flag: %d, global_dir_flag: %d\n", global_int_flag, global_reverse_flag, global_fold_flag, global_dir_flag);
+            for (int i = 0; i < nlines; i++) {
+                buffer[i] = lineptr[i];
             }
-            
-            if (field != 0) {
-                printf("Run for field: %d\n", field);
-                get_field((void **)lineptr, splited_lines, field-1, nlines);
-                quicksort((void **)splited_lines, 0, nlines - 1, (int_flag ? cmp_num : cmp_str));
-                writeline((void **)splited_lines, nlines);
-                afree((void **)splited_lines, nlines);
-            } else {
-                quicksort((void **)lineptr, 0, nlines - 1, (int_flag ? cmp_num : cmp_str));
-                writeline((void **)lineptr, nlines);
-            }
+            quicksort((void **)lineptr, (void **)buffer, 0, nlines - 1,
+                        global_int_flag ? cmp_num : cmp_str,
+                        global_int_flag, global_reverse_flag, global_fold_flag, global_dir_flag);
+
+            writeline((void **)lineptr, nlines);
         }
 
-        afree((void **)lineptr, nlines);
-        return 0;
+        for (int i = 0; i < field_count; i++) {
+            int index = fields[i];
+            printf("Sort on Field: %d, int_flag: %d, reverse_flag: %d, fold_flag: %d, dir_flag: %d\n", index, int_flag[index], reverse_flag[index], fold_flag[index], dir_flag[index]);
+            get_substring((void **)lineptr, (void **)buffer, index, nlines);
+            quicksort((void **)lineptr, (void **)buffer, 0, nlines - 1,
+                        int_flag[index] ? cmp_num : cmp_str,
+                        int_flag[index], reverse_flag[index], fold_flag[index], dir_flag[index]);
+            writeline((void **)lineptr, nlines);
+        }
 
+        printf("Finished Sorting\n");
+        // writeline((void **)lineptr, nlines);
+        afree((void **)lineptr, nlines);
+        afree((void **)buffer, nlines);
+
+        return 0;
     } else {
         printf("error: input too big to sort\n");
         return 1;
     }
 }
 
+void parse_flags(int argc, char **argv, int *int_flag, int *reverse_flag, int *fold_flag, int *dir_flag, int *fields, int *field_count) {
+    int current_field = -1;
+    for (int i = 1; i < argc; i++)
 
-int cmp_num(void **a, void **b) {
+        if (argv[i][0] == '-' && isdigit(argv[i][1])) {
+            int field = atoi(&argv[i][1]) - 1;
+            fields[*field_count] = field;
+            current_field = field;
+            (*field_count)++;
+
+            for (int j = 2; j < strlen(argv[i]); j++) {
+                if (argv[i][j] == 'n') int_flag[current_field] = 1;
+                if (argv[i][j] == 'r') reverse_flag[current_field] = 1;
+                if (argv[i][j] == 'f') fold_flag[current_field] = 1;
+                if (argv[i][j] == 'd') dir_flag[current_field] = 1;
+            }
+        }
+
+        else if (argv[i][0] == '-') {
+            for (int j = 1; j < strlen(argv[i]); j++) {
+                if (current_field != -1) {
+                    if (argv[i][j] == 'n') int_flag[current_field] = 1;
+                    if (argv[i][j] == 'r') reverse_flag[current_field] = 1;
+                    if (argv[i][j] == 'f') fold_flag[current_field] = 1;
+                    if (argv[i][j] == 'd') dir_flag[current_field] = 1;
+                }
+                else {
+                    is_global_specified = 1;
+                    if (argv[i][j] == 'n') global_int_flag = 1;
+                    if (argv[i][j] == 'r') global_reverse_flag = 1;
+                    if (argv[i][j] == 'f') global_fold_flag = 1;
+                    if (argv[i][j] == 'd') global_dir_flag = 1;
+                }
+            }
+
+        }
+}
+
+void get_substring(void **lineptr, void **buffer, int index, int nlines) {
+    for (int i = 0; i < nlines; i++) {
+        char line[MAXLEN];
+        strcpy(line, (char *)lineptr[i]);
+
+        char *token = strtok(line, ",");
+        int count = 0;
+
+        while (token != NULL) {
+            if (count == index) {
+                buffer[i] = malloc(strlen(token) + 1);  // allocate memory
+                if (buffer[i] != NULL) {
+                    strcpy((char *)buffer[i], token);  // copy token into new memory
+                } else {
+                    fprintf(stderr, "Memory allocation failed\n");
+                    exit(1);
+                }
+                printf("%s\n", (char *)buffer[i]);
+                printf("%s\n", "************************");
+                break;
+            }
+            token = strtok(NULL, ",");
+            count++;
+        }
+
+        // If the desired column doesn't exist, set buffer[i] to an empty string
+        if (token == NULL) {
+            buffer[i] = malloc(1);
+            if (buffer[i] != NULL) {
+                ((char *)buffer[i])[0] = '\0';
+            }
+        }
+    }
+}
+
+
+
+int cmp_num(void **a, void **b, int int_flag, int reverse_flag, int fold_flag, int dir_flag) {
     double num1 = atof(*(char **)a);
     double num2 = atof(*(char **)b);
 
@@ -112,7 +166,7 @@ int cmp_num(void **a, void **b) {
 }
 
 
-int cmp_str(void **a, void **b) {
+int cmp_str(void **a, void **b, int int_flag, int reverse_flag, int fold_flag, int dir_flag) {
     char *s1 = *(char **)a;
     char *s2 = *(char **)b;
 
@@ -127,11 +181,15 @@ int cmp_str(void **a, void **b) {
         s2 = string2;
     }
 
+    int result;
     if (fold_flag) {
-        return strcasecmp(s1, s2);
+        printf("%s\n", "Applying fold_flag");
+        result = strcasecmp(s1, s2);
+    } else {
+        result = strcmp(s1, s2);  
     }
 
-    return strcmp(s1, s2);  
+    return reverse_flag ? -result : result;
 }
 
 
@@ -157,74 +215,34 @@ void extract_string(char *s, char *string) {
     *string = '\0';  
 }
 
-void get_field(void *base[], char *splitted_lines[], int col_num, int nlines) {
-    char buffer[MAXLEN];
-    char *p;
 
-    for (int i = 0; i < nlines; i++) {
-        char *element = (char *)base[i];
-        int count = 0;
-        int len = 0;
-
-        // Reset buffer before starting each new line
-        memset(buffer, 0, MAXLEN);
-
-        while (*element != '\0') {
-            // printf("element: %s\n", element);
-            if (count == col_num) {
-                while (*element != '\0' && *element != '\t' && *element != '\n') {
-                    if (len < MAXLEN - 1) {  
-                        buffer[len++] = *element;
-                    }
-                    element++;
-                }
-                break;
-            }
-            else if (*element == '\t') {
-                count++;
-            }
-            else {
-                element++;
-            }
-        }
-
-        buffer[len] = '\0';
-        printf("the part of column %d: %s\n", col_num + 1, buffer);
-
-        p = alloc(len + 1);
-        strcpy(p, buffer);
-        splitted_lines[i] = p;
-    }
-}
-
-
-
-void quicksort(void *base[], int low, int high, int (*compar)(void **, void **)) {
+void quicksort(void *base[], void *buffer[], int low, int high, int (*compar)(void **, void **, int, int, int, int), int int_flag, int reverse_flag, int fold_flag, int dir_flag) {
     if (low < high) {
-        int p = partition(base, low, high, compar);
-        quicksort(base, low, p, compar);
-        quicksort(base, p + 1, high, compar);
+        int p = partition(base, buffer, low, high, compar, int_flag, reverse_flag, fold_flag, dir_flag);
+        quicksort(base, buffer, low, p, compar, int_flag, reverse_flag, fold_flag, dir_flag);
+        quicksort(base, buffer, p + 1, high, compar, int_flag, reverse_flag, fold_flag, dir_flag);
     }
 }
 
-int partition(void **base, int low, int high, int (*compar)(void **, void **)) {
-    void **pivot = base + low;
+int partition(void **base, void **buffer, int low, int high, int (*compar)(void **, void **, int, int, int, int), int int_flag, int reverse_flag, int fold_flag, int dir_flag) {
+    void **pivot = buffer + low;
     int left = low - 1;
     int right = high + 1;
 
     while (1) {
         do {
             right--;
-        } while (compar(base + right, pivot) > 0);
+        } while (compar(buffer + right, pivot, int_flag, reverse_flag, fold_flag, dir_flag) > 0);
 
         do {
             left++;
-        } while (compar(base + left, pivot) < 0);
+        } while (compar(buffer + left, pivot, int_flag, reverse_flag, fold_flag, dir_flag) < 0);
 
         if (left >= right)
             return right;
 
         swap(base + left, base + right);
+        swap(buffer + left, buffer + right);
     }
 }
 
@@ -271,8 +289,7 @@ void writeline(void **base, int len) {
 
 void afree(void **base, int len) {
     for (int i = 0; i < len; i++) {
-        if (base[i] != NULL)
-            free(base[i]);
+        free(base[i]);
     }
 }
 
