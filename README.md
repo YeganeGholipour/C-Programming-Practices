@@ -15,7 +15,7 @@ I’m solving problems and practicing exercises from the following books:
    A book by Robert C. Seacord that helps solidify practical and professional C programming techniques.
 
 ## Current Progress
-I'm currently working through **Chapter 5**: *Pointers* from "C Programming Language - 2nd Edition (OCR)" and am in the final section of the chapter.
+I'm currently working through **Chapter 8**: *low-level I/O* from "C Programming Language - 2nd Edition (OCR)".
 
 ## Directory Structure
 ```
