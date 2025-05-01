@@ -2,11 +2,14 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include "filesys.h"
 
 #define PERM 0666
+
+size_t _refill_buffer(size_t total_bytes, MY_FILE *stream);
 
 MY_FILE *my_fopen(char *file_name, int mode) {
   int fd, flag;
@@ -132,6 +135,69 @@ int my_fflush(MY_FILE *stream) {
     }
 
     stream->buf_pos = 0;
+    stream->buf_end = 0;
   }
   return 0;
+}
+
+size_t my_fread(void *ptr, size_t size, size_t nmemb, MY_FILE *stream) {
+  if (!ptr || !stream || size == 0 || nmemb == 0 ||
+      (stream->mode & (WRITE | APPEND)) || stream->error || stream->eof)
+    return 0;
+
+  size_t total_bytes = size * nmemb;
+  size_t copied = 0;
+  char *dest = (char *)ptr;
+
+  while (copied < total_bytes) {
+    if (stream->buf_pos >= stream->buf_end) {
+      size_t n = read(stream->fd, stream->buffer, stream->bufsize);
+      if (n <= 0) {
+        if (n == 0)
+          stream->eof = 1;
+        else
+          stream->error = 1;
+        break;
+        stream->buf_pos = 0;
+        stream->buf_end = n;
+      }
+    }
+
+    size_t available = stream->buf_end - stream->buf_pos;
+    size_t needed = total_bytes - copied;
+    size_t to_copy = (available < needed) ? available : needed;
+
+    memcpy(dest + copied, stream->buffer + stream->buf_pos, to_copy);
+    copied += to_copy;
+    stream->buf_pos += to_copy;
+  }
+
+  return copied / size;
+}
+
+size_t my_fwrite(const void *ptr, size_t size, size_t nmemb, MY_FILE *stream) {
+  if (!ptr || !stream || size == 0 || nmemb == 0 || 
+      (stream->mode & READ) || stream->error || stream->eof)
+    return 0;
+
+  size_t total_bytes = size * nmemb;
+  size_t copied = 0;
+  const char *src = (const char *)ptr;
+
+  while (copied < total_bytes) {
+    if (stream->buf_pos >= stream->bufsize) {
+      if (my_fflush(stream) == EOF)
+        break;
+    }
+
+    size_t available = stream->bufsize - stream->buf_pos;
+    size_t needed = total_bytes - copied;
+    size_t to_be_copied = (available < needed) ? available : needed;
+
+    memcpy(stream->buffer + stream->buf_pos, src + copied, to_be_copied);
+    stream->buf_pos += to_be_copied;
+    copied += to_be_copied;
+  }
+
+  return copied / size;
 }

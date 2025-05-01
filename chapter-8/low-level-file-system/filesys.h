@@ -28,5 +28,9 @@ int my_fgetc(MY_FILE *stream);
 int my_fputc(int c, MY_FILE *stream);
 // flush write buffer
 int my_fflush(MY_FILE *stream);
+// block read
+size_t my_fread(void *ptr, size_t size, size_t nmemb, MY_FILE *stream);
+// block write
+size_t my_fwrite(const void *ptr, size_t size, size_t nmemb, MY_FILE *stream);
 
 #endif
