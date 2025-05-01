@@ -176,8 +176,8 @@ size_t my_fread(void *ptr, size_t size, size_t nmemb, MY_FILE *stream) {
 }
 
 size_t my_fwrite(const void *ptr, size_t size, size_t nmemb, MY_FILE *stream) {
-  if (!ptr || !stream || size == 0 || nmemb == 0 || 
-      (stream->mode & READ) || stream->error || stream->eof)
+  if (!ptr || !stream || size == 0 || nmemb == 0 || (stream->mode & READ) ||
+      stream->error || stream->eof)
     return 0;
 
   size_t total_bytes = size * nmemb;
@@ -200,4 +200,46 @@ size_t my_fwrite(const void *ptr, size_t size, size_t nmemb, MY_FILE *stream) {
   }
 
   return copied / size;
+}
+
+int fseek(MY_FILE *stream, long int offset, int whence) {
+  if (!stream || stream->error || stream->eof)
+    return -1;
+
+  int real_whence;
+  switch (whence) {
+  case MY_SEEK_SET:
+    real_whence = SEEK_SET;
+    break;
+  case MY_SEEK_CUR:
+    real_whence = SEEK_CUR;
+    break;
+  case MY_SEEK_END:
+    real_whence = SEEK_END;
+    break;
+  default:
+    stream->error = 1;
+    return -1;
+  }
+
+  // Flush first in WRITE mode to prevent writing at wrong offset
+  if (stream->mode == WRITE) {
+    if (my_fflush(stream) == EOF) {
+      stream->error = 1;
+      return -1;
+    }
+  }
+
+  if (lseek(stream->fd, offset, real_whence) == -1) {
+    stream->error = 1;
+    return -1;
+  }
+
+  // Invalidate buffer in READ mode
+  if (stream->mode == READ) {
+    stream->buf_pos = 0;
+    stream->buf_end = 0;
+  }
+
+  return 0;
 }

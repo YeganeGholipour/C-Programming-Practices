@@ -6,6 +6,7 @@
 #define MY_BUFSIZ 4096
 
 typedef enum { READ, WRITE, APPEND } mode;
+typedef enum { MY_SEEK_SET, MY_SEEK_CUR, MY_SEEK_END } whence;
 
 typedef struct {
   int fd;         // file descriptor
@@ -32,5 +33,6 @@ int my_fflush(MY_FILE *stream);
 size_t my_fread(void *ptr, size_t size, size_t nmemb, MY_FILE *stream);
 // block write
 size_t my_fwrite(const void *ptr, size_t size, size_t nmemb, MY_FILE *stream);
-
+// set file position
+int fseek(MY_FILE *stream, long int offset, int whence);
 #endif
